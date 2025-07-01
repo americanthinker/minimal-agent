@@ -112,7 +112,7 @@ class Agent:
         nr_steps = 0
         while not task_completed or nr_steps <= self.max_steps:
             logger.info(f"!STEP!: {nr_steps}")
-            output, observation, is_final_answer = self.step(self.history)
+            is_final_answer, observation, output = self.step(self.history)
             logger.info(f"!Observation!: {observation['content']}")
             self.history.append(observation)
             logging.debug(f"!Last History entry! f{self.history[-1]}")
@@ -121,7 +121,7 @@ class Agent:
                 return output
         return "Could not solve task: Maximum number of steps exceeded."
 
-    def step(self, history: list[dict[str, str]]) -> tuple[Any, dict[str, str], bool]:
+    def step(self, history: list[dict[str, str]]) -> tuple[bool, dict[str, str], Any]:
         """Implement the logic for each step of the agent's decision-making process.
 
         Args:
@@ -157,4 +157,4 @@ class Agent:
         # The agent asked the user to execute some code. This is now done and the
         # resulting observation is now handed back to the LLM by the user.
         observation = {"role": "user", "content": "Observation:\n" + execution_logs}
-        return output, observation, is_final_answer
+        return is_final_answer, observation, output
