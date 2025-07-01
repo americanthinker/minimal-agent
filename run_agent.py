@@ -3,16 +3,17 @@ import os
 from dotenv import load_dotenv
 
 from minimal_agent.agent import Agent
-from minimal_agent.tools import DuckDuckGoSearchTool, VisitWebpageTool
+from minimal_agent.tools import VisitWebpageTool, WebSearchTool
 
-load_dotenv()
+_ = load_dotenv(".env", override=True)
+tavily_api_key = os.environ.get("TAVILY_API_KEY")
 
 
 if __name__ == "__main__":
     agent = Agent(
         model=os.environ.get("MODEL"),
         tools=[
-            DuckDuckGoSearchTool(max_results=10),
+            WebSearchTool(max_results=10, tavily_api_key=tavily_api_key),
             VisitWebpageTool(max_output_length=1000),
         ],
     )

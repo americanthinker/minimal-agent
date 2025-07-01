@@ -1,3 +1,6 @@
+from duckduckgo_search.exceptions import DuckDuckGoSearchException
+
+
 class FinalAnswerTool:
     name = "final_answer"
     description = "Provides a final answer to the given problem."
@@ -66,7 +69,7 @@ class DuckDuckGoSearchTool:
     }
     output_type = "string"
 
-    def __init__(self, max_results=10, **kwargs):
+    def __init__(self, max_results: int = 10, **kwargs):
         super().__init__()
         self.max_results = max_results
         try:
@@ -86,3 +89,61 @@ class DuckDuckGoSearchTool:
             for result in results
         ]
         return "## Search Results\n\n" + "\n\n".join(postprocessed_results)
+
+
+class TavilySearchTool:
+    name = "web_search"
+    description = """Performs a Tavily web search based on your query (think a Google search) then returns the top search results."""
+    inputs = {
+        "query": {"type": "string", "description": "The search query to perform."}
+    }
+    output_type = "string"
+
+    def __init__(
+        self,
+        tavily_api_key: str,
+        max_results: int = 10,
+    ) -> None:
+        self.max_results = max_results
+        try:
+            from tavily import TavilyClient
+        except ImportError as e:
+            raise ImportError(
+                "You must install package `tavily-python` to run this tool: for instance run `uv add tavily-python`."
+            ) from e
+        self.client = TavilyClient(tavily_api_key)
+
+    def __call__(self, query: str) -> str:
+        results = self.client.search(query, include_raw_content="text")  # type: ignore
+        if len(results) == 0:
+            raise Exception("No results found! Try a less restrictive/shorter query.")
+        results = results["results"][: self.max_results]
+        postprocessed_results = [
+            f"[{result['title']}]({result['content']}" for result in results
+        ]
+        return "## Search Results\n\n" + "\n\n".join(postprocessed_results)
+
+
+class WebSearchTool:
+    name = "web_search"
+    description = """Performs a web search based on your query (think a Google search) then returns the top search results."""
+    inputs = {
+        "query": {"type": "string", "description": "The search query to perform."}
+    }
+    output_type = "string"
+
+    def __init__(
+        self, max_results: int = 10, tavily_api_key: str | None = None
+    ) -> None:
+        self.ddg = DuckDuckGoSearchTool(max_results=max_results)
+        if isinstance(tavily_api_key, str):
+            self.tavily = TavilySearchTool(
+                max_results=max_results, tavily_api_key=tavily_api_key
+            )
+
+    def __call__(self, query: str) -> None:
+        try:
+            return self.ddg(query)
+        except DuckDuckGoSearchException as e:
+            print(f"Error using DuckDuckGo search: {e}. Trying Tavily search...")
+            return self.tavily(query)

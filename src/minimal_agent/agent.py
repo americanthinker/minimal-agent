@@ -1,5 +1,6 @@
 import logging
 import re
+from typing import Any
 
 from jinja2 import StrictUndefined, Template
 from litellm import completion
@@ -22,6 +23,8 @@ BASE_BUILTIN_MODULES = [
     "unicodedata",
 ]
 
+CODE_ACTION_PLACEHOLDER = "```py\npass\n```"
+
 
 # Import and define logger using standard library
 logging.basicConfig(
@@ -38,8 +41,8 @@ class Agent:
         authorized_imports=None,
         max_steps=10,
     ):
-        self.model = model
-        self.max_steps = max_steps
+        self.model: str = model
+        self.max_steps: int = max_steps
 
         # 1. Initialize Python executor:
 
@@ -48,7 +51,7 @@ class Agent:
         # answer, as described in it's system prompt (see below).
         self.tools = {tool.name: tool for tool in tools + [FinalAnswerTool()]}
 
-        # 1.2. Described the imports that the agent is allowed to use in it's code
+        # 1.2. Describes the imports that the agent is allowed to use in it's code
         # execution. This is to ensure that the agent doesn't execute potentially
         # dangerous code - e.g. code that deletes all files.
         self.authorized_imports = authorized_imports or BASE_BUILTIN_MODULES
@@ -109,7 +112,7 @@ class Agent:
         nr_steps = 0
         while not task_completed or nr_steps <= self.max_steps:
             logger.info(f"!STEP!: {nr_steps}")
-            is_final_answer, observation, output = self.step(self.history)
+            output, observation, is_final_answer = self.step(self.history)
             logger.info(f"!Observation!: {observation['content']}")
             self.history.append(observation)
             logging.debug(f"!Last History entry! f{self.history[-1]}")
@@ -118,7 +121,7 @@ class Agent:
                 return output
         return "Could not solve task: Maximum number of steps exceeded."
 
-    def step(self, history: list) -> list:
+    def step(self, history: list[dict[str, str]]) -> tuple[Any, dict[str, str], bool]:
         """Implement the logic for each step of the agent's decision-making process.
 
         Args:
@@ -136,22 +139,22 @@ class Agent:
         response = completion(
             model=self.model, messages=history, stream=False, stop="<end_code>"
         )
-        thought = response.choices[0].message.content
+        thought: str = response.choices[0].message.content
         self.history.append({"role": "assistant", "content": thought})
         logging.info(f"!Thought!: {thought}")
 
         code_action = self._extract_python_code(thought)
+        code_action = code_action if code_action else CODE_ACTION_PLACEHOLDER
         logging.info(f"!Code action!: {code_action}")
 
         # 2. Execute code
         output, execution_logs, is_final_answer = self.python_executor(
             code_action=code_action
         )
-
         # 3. Create observation that can be added to the history.
         # Note that the observation has role 'human'. This ensures that
         # the LLM reacts to it in the next step. Think of it as follows:
         # The agent asked the user to execute some code. This is now done and the
         # resulting observation is now handed back to the LLM by the user.
         observation = {"role": "user", "content": "Observation:\n" + execution_logs}
-        return is_final_answer, observation, output
+        return output, observation, is_final_answer
